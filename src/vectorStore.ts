@@ -12,7 +12,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 
 // ─── Create a new Vector Store ────────────────────────────────────────────────
 export const createVectorStore = async (name: string): Promise<string> => {
-  const store = await openai.beta.vectorStores.create({ name });
+  const store = await openai.vectorStores.create({ name });
   console.log(`✅ Vector Store created: ${store.id} ("${name}")`);
   return store.id;
 };
@@ -32,7 +32,7 @@ export const uploadFileToStore = async (
   console.log(`📤 Uploading: ${path.basename(filePath)} ...`);
 
   const fileStream = fs.createReadStream(filePath);
-  await openai.beta.vectorStores.fileBatches.uploadAndPoll(vectorStoreId, {
+  await openai.vectorStores.fileBatches.uploadAndPoll(vectorStoreId, {
     files: [fileStream]
   });
 
@@ -58,7 +58,7 @@ export const uploadFolderToStore = async (
 
 // ─── List all Vector Stores ───────────────────────────────────────────────────
 export const listVectorStores = async (): Promise<void> => {
-  const stores = await openai.beta.vectorStores.list();
+  const stores = await openai.vectorStores.list();
   if (stores.data.length === 0) {
     console.log("No vector stores found.");
     return;
@@ -71,6 +71,6 @@ export const listVectorStores = async (): Promise<void> => {
 
 // ─── Delete a Vector Store ────────────────────────────────────────────────────
 export const deleteVectorStore = async (vectorStoreId: string): Promise<void> => {
-  await openai.beta.vectorStores.del(vectorStoreId);
+  await openai.vectorStores.del(vectorStoreId);
   console.log(`🗑️  Deleted vector store: ${vectorStoreId}`);
 };
