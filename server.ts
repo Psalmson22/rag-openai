@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import multer from "multer";
 import * as path from "path";
@@ -21,6 +21,16 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
+
+// ── API Key Auth (protects /api routes from public access) ────────────────────
+const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
+  const appSecret = process.env.APP_SECRET_KEY;
+  if (!appSecret) return next(); // no secret set = open (dev mode)
+  const provided = req.headers["x-api-key"] ?? req.query.api_key;
+  if (provided !== appSecret) return res.status(401).json({ error: "Unauthorized" });
+  next();
+};
+app.use("/api", requireApiKey);
 
 // In-memory session store  { sessionId -> { vectorStoreId, history } }
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};

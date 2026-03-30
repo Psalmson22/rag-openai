@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: docmind-rag
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false          # you'll paste this in Render dashboard
+      - key: APP_SECRET_KEY
+        sync: false          # you'll paste this in Render dashboard
+      - key: NODE_ENV
+        value: production

@@ -1,0 +1,91 @@
+openapi: 3.1.0
+info:
+  title: DocMind RAG API
+  description: Document Q&A system — ask questions and get answers from your uploaded documents.
+  version: 1.0.0
+
+servers:
+  - url: https://YOUR-APP-URL.onrender.com   # ← replace with your actual deployed URL
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /api/chat:
+    post:
+      operationId: askQuestion
+      summary: Ask a question about documents in a knowledge base
+      description: Send a user question and get an AI-generated answer grounded in the uploaded documents.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, vectorStoreId, sessionId]
+              properties:
+                message:
+                  type: string
+                  description: The user's question
+                  example: "What are the key findings in the report?"
+                vectorStoreId:
+                  type: string
+                  description: The OpenAI Vector Store ID to search (get this from /api/stores)
+                  example: "vs_abc123"
+                sessionId:
+                  type: string
+                  description: A unique session ID for multi-turn conversation memory. Generate a UUID and reuse it across turns.
+                  example: "session-uuid-here"
+      responses:
+        "200":
+          description: AI-generated answer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply:
+                    type: string
+                    description: The answer from the document
+        "400":
+          description: Missing required fields
+        "401":
+          description: Unauthorized — invalid or missing API key
+        "500":
+          description: Internal server error
+
+  /api/stores:
+    get:
+      operationId: listKnowledgeBases
+      summary: List all available knowledge bases (vector stores)
+      description: Returns all vector stores with their IDs, names, and file counts.
+      responses:
+        "200":
+          description: List of knowledge bases
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stores:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: Vector Store ID to use in /api/chat
+                        name:
+                          type: string
+                          description: Human-readable name
+                        fileCount:
+                          type: integer
+                          description: Number of indexed files
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
