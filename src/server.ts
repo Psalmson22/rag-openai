@@ -16,7 +16,7 @@ import { AgentInputItem } from "@openai/agents";
 
 const app = express();
 const upload = multer({ dest: "uploads/" });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const getClient = () => new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.use(cors());
 app.use(express.json());
@@ -38,7 +38,7 @@ const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[
 // ── Vector Stores ─────────────────────────────────────────────────────────────
 app.get("/api/stores", async (_req, res) => {
   try {
-    const stores = await openai.vectorStores.list();
+    const stores = await getClient().vectorStores.list();
     res.json({ stores: stores.data.map((s: any) => ({ id: s.id, name: s.name, fileCount: s.file_counts.completed })) });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -47,7 +47,7 @@ app.post("/api/stores", async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "name is required" });
-    const store = await openai.vectorStores.create({ name });
+    const store = await getClient().vectorStores.create({ name });
     res.json({ id: store.id, name: store.name });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });

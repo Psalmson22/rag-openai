@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const getClient = () => new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ─── Supported file types by OpenAI Vector Store ─────────────────────────────
 const SUPPORTED_EXTENSIONS = new Set([
@@ -12,7 +12,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 
 // ─── Create a new Vector Store ────────────────────────────────────────────────
 export const createVectorStore = async (name: string): Promise<string> => {
-  const store = await openai.vectorStores.create({ name });
+  const store = await getClient().vectorStores.create({ name });
   console.log(`✅ Vector Store created: ${store.id} ("${name}")`);
   return store.id;
 };
@@ -32,7 +32,7 @@ export const uploadFileToStore = async (
   console.log(`📤 Uploading: ${path.basename(filePath)} ...`);
 
   const fileStream = fs.createReadStream(filePath);
-  await openai.vectorStores.fileBatches.uploadAndPoll(vectorStoreId, {
+  await getClient().vectorStores.fileBatches.uploadAndPoll(vectorStoreId, {
     files: [fileStream]
   });
 
@@ -58,7 +58,7 @@ export const uploadFolderToStore = async (
 
 // ─── List all Vector Stores ───────────────────────────────────────────────────
 export const listVectorStores = async (): Promise<void> => {
-  const stores = await openai.vectorStores.list();
+  const stores = await getClient().vectorStores.list();
   if (stores.data.length === 0) {
     console.log("No vector stores found.");
     return;
@@ -71,6 +71,6 @@ export const listVectorStores = async (): Promise<void> => {
 
 // ─── Delete a Vector Store ────────────────────────────────────────────────────
 export const deleteVectorStore = async (vectorStoreId: string): Promise<void> => {
-  await openai.vectorStores.del(vectorStoreId);
+  await getClient().vectorStores.del(vectorStoreId);
   console.log(`🗑️  Deleted vector store: ${vectorStoreId}`);
 };
