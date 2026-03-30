@@ -518,7 +518,12 @@
 
 <script>
   // ── State ─────────────────────────────────────────────────────────────────
-  const API = "";  // same origin
+  const API = "";
+  const API_KEY = "5c4fcab6b43ce634bf0018f7011e87f796c6f7bbe83c45b192c0b8af4bc344ec";
+  const apiFetch = (url, opts = {}) => fetch(url, {
+    ...opts,
+    headers: { "x-api-key": API_KEY, ...(opts.headers || {}) }
+  });
   let activeStoreId = null;
   let activeStoreName = "";
   let sessionId = crypto.randomUUID();
@@ -530,7 +535,7 @@
 
   async function loadStores() {
     try {
-      const r = await fetch(`${API}/api/stores`);
+      const r = await apiFetch(`${API}/api/stores`);
       const { stores } = await r.json();
       renderStores(stores);
     } catch (e) {
@@ -591,7 +596,7 @@
     const btn = document.getElementById("createStoreBtn");
     btn.disabled = true; btn.textContent = "Creating…";
     try {
-      const r = await fetch(`${API}/api/stores`, {
+      const r = await apiFetch(`${API}/api/stores`, {
         method: "POST", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ name })
       });
@@ -612,7 +617,7 @@
   async function deleteStore(id) {
     if (!confirm("Delete this knowledge base? This cannot be undone.")) return;
     try {
-      await fetch(`${API}/api/stores/${id}`, { method: "DELETE" });
+      await apiFetch(`${API}/api/stores/${id}`, { method: "DELETE" });
       if (activeStoreId === id) {
         activeStoreId = null;
         document.getElementById("noStoreState").style.display = "flex";
@@ -669,7 +674,7 @@
 
     try {
       fill.style.width = "60%";
-      const r = await fetch(`${API}/api/stores/${activeStoreId}/upload`, { method: "POST", body: form });
+      const r = await apiFetch(`${API}/api/stores/${activeStoreId}/upload`, { method: 'POST', body: form });
       const data = await r.json();
       fill.style.width = "100%";
 
@@ -721,7 +726,7 @@
     const typingEl = appendTyping();
 
     try {
-      const r = await fetch(`${API}/api/chat`, {
+      const r = await apiFetch(`${API}/api/chat`, {
         method: "POST", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ message: text, vectorStoreId: activeStoreId, sessionId })
       });
@@ -778,7 +783,7 @@
   }
 
   async function clearChat(notify = true) {
-    if (sessionId) await fetch(`${API}/api/chat/${sessionId}`, { method: "DELETE" }).catch(()=>{});
+    if (sessionId) await apiFetch(`${API}/api/chat/${sessionId}`, { method: "DELETE" }).catch(()=>{});
     sessionId = crypto.randomUUID();
     const msgs = document.getElementById("messages");
     msgs.innerHTML = `
