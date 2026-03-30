@@ -9,7 +9,11 @@ import { runWorkflow } from "./agent";
 import { uploadFileToStore, deleteVectorStore } from "./vectorStore";
 import { AgentInputItem } from "@openai/agents";
 
-const getClient = () => new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const getClient = () => {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY is not set in environment variables");
+  return new OpenAI({ apiKey: key });
+};
 
 const app = express();
 const upload = multer({ dest: "uploads/" });
@@ -18,7 +22,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
-// ── API Key Auth ──────────────────────────────────────────────────────────────
+// ── API Key Auth (protects /api routes only) ──────────────────────────────────
 const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   const appSecret = process.env.APP_SECRET_KEY;
   if (!appSecret) return next();
@@ -27,7 +31,7 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 app.use("/api", requireApiKey);
-app.use("/mcp", requireApiKey);
+// Note: /mcp is intentionally open so ChatGPT can connect without auth
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
@@ -118,7 +122,7 @@ app.get("/mcp/sse", (req, res) => {
             properties: {
               message: { type: "string", description: "The user question" },
               vectorStoreId: { type: "string", description: "Knowledge base ID from listKnowledgeBases" },
-              sessionId: { type: "string", description: "Unique session ID, reuse across turns" }
+              sessionId: { type: "string", description: "Unique session ID, reuse across conversation turns" }
             },
             required: ["message", "vectorStoreId", "sessionId"]
           }
@@ -137,7 +141,13 @@ app.post("/mcp/call", async (req, res) => {
   try {
     if (tool === "listKnowledgeBases") {
       const stores = await getClient().vectorStores.list();
-      return res.json({ result: stores.data.map((s: any) => ({ id: s.id, name: s.name || "Unnamed", fileCount: s.file_counts.completed })) });
+      return res.json({
+        result: stores.data.map((s: any) => ({
+          id: s.id,
+          name: s.name || "Unnamed",
+          fileCount: s.file_counts.completed
+        }))
+      });
     }
     if (tool === "askQuestion") {
       const { message, vectorStoreId, sessionId } = input;
