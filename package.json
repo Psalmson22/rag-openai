@@ -2,7 +2,7 @@
   "name": "rag-document-qa",
   "version": "1.0.0",
   "description": "Document Q&A RAG system using OpenAI Agents SDK + Vector Store",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",

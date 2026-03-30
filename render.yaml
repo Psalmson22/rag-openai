@@ -3,7 +3,7 @@ services:
     name: docmind-rag
     runtime: node
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: node dist/server.js
     envVars:
       - key: OPENAI_API_KEY
         sync: false          # you'll paste this in Render dashboard
