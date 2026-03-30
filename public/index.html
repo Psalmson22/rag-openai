@@ -552,10 +552,10 @@
       return;
     }
     el.innerHTML = stores.map(s => `
-      <div class="store-item ${s.id === activeStoreId ? 'active' : ''}" onclick="selectStore('${s.id}','${escHtml(s.name)}',${s.fileCount})">
+      <div class="store-item ${s.id === activeStoreId ? 'active' : ''}" onclick="selectStore('${s.id}','${escHtml(s.name || 'Unnamed Store')}',${s.fileCount})">
         <div class="store-dot"></div>
         <div class="store-info">
-          <div class="store-name">${escHtml(s.name)}</div>
+          <div class="store-name">${escHtml(s.name || 'Unnamed Store')}</div>
           <div class="store-meta">${s.fileCount} file${s.fileCount !== 1 ? 's' : ''}</div>
         </div>
         <button class="store-delete" onclick="event.stopPropagation();deleteStore('${s.id}')" title="Delete">✕</button>
