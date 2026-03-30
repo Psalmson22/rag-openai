@@ -531,7 +531,7 @@
   let pendingFiles = [];
 
   // ── Boot ──────────────────────────────────────────────────────────────────
-  loadStores();
+  setTimeout(loadStores, 500);
 
   async function loadStores() {
     try {
@@ -568,7 +568,7 @@
     sessionId = crypto.randomUUID(); // new session per store switch
 
     // Update sidebar
-    loadStores();
+    setTimeout(loadStores, 500);
     document.getElementById("uploadBtn").disabled = false;
     document.getElementById("storeInfo").style.display = "block";
     document.getElementById("storeInfoContent").textContent =
@@ -605,7 +605,7 @@
       closeModal("newStoreModal");
       document.getElementById("newStoreName").value = "";
       showToast("Knowledge base created!", "success");
-      await loadStores();
+      await setTimeout(loadStores, 500);
       selectStore(data.id, data.name, 0);
     } catch (e) {
       showToast(e.message, "error");
@@ -626,7 +626,7 @@
         document.getElementById("storeInfo").style.display = "none";
       }
       showToast("Deleted.", "success");
-      loadStores();
+      setTimeout(loadStores, 500);
     } catch (e) { showToast(e.message, "error"); }
   }
 
@@ -686,7 +686,7 @@
       const ok = data.results.filter(r => r.status === 'ok').length;
       showToast(`${ok} file${ok !== 1 ? 's' : ''} uploaded & indexed!`, "success");
       setTimeout(() => closeModal("uploadModal"), 1500);
-      loadStores();
+      setTimeout(loadStores, 500);
     } catch (e) {
       showToast(e.message, "error");
     } finally {
