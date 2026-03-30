@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DocMind — Document Q&A</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0d0f;
+      --surface:   #141417;
+      --surface2:  #1c1c21;
+      --border:    #2a2a32;
+      --accent:    #c8a96e;
+      --accent2:   #7c6fd0;
+      --text:      #e8e6e0;
+      --muted:     #6b6870;
+      --danger:    #c06060;
+      --success:   #60a882;
+      --radius:    12px;
+      --font-serif: 'Playfair Display', Georgia, serif;
+      --font-mono:  'DM Mono', 'Courier New', monospace;
+      --font-sans:  'DM Sans', sans-serif;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; }
+
+    /* ── Layout ─────────────────────────────────────── */
+    .app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; overflow: hidden; }
+
+    /* ── Sidebar ──────────────────────────────────────  */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 28px 24px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    .logo span { color: var(--accent); font-style: italic; }
+
+    .logo-sub {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .sidebar-section {
+      padding: 20px 24px 0;
+      flex: 1;
+      overflow-y: auto;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    /* Stores list */
+    .stores-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .store-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .store-item:hover { background: var(--surface2); border-color: var(--border); }
+    .store-item.active { background: var(--surface2); border-color: var(--accent); }
+
+    .store-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+    }
+    .store-item.active .store-dot { background: var(--accent); }
+
+    .store-info { flex: 1; min-width: 0; }
+    .store-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .store-meta { font-family: var(--font-mono); font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    .store-delete {
+      opacity: 0; background: none; border: none; color: var(--danger);
+      cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 4px;
+      transition: opacity 0.15s;
+    }
+    .store-item:hover .store-delete { opacity: 1; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer;
+      font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+      transition: all 0.15s; text-align: center; width: 100%;
+    }
+    .btn-primary { background: var(--accent); color: #0d0d0f; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface2); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    /* Input */
+    .input-field {
+      width: 100%; padding: 9px 12px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: var(--font-sans); font-size: 13px;
+      outline: none; transition: border-color 0.15s;
+    }
+    .input-field:focus { border-color: var(--accent); }
+    .input-field::placeholder { color: var(--muted); }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      padding: 16px; text-align: center; cursor: pointer;
+      transition: all 0.2s; color: var(--muted); font-size: 12px;
+    }
+    .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); color: var(--accent); background: rgba(200,169,110,0.04); }
+
+    .upload-icon { font-size: 22px; margin-bottom: 6px; display: block; }
+
+    .file-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+    .file-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface2); border-radius: 6px; padding: 5px 8px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+    }
+    .file-pill .ok { color: var(--success); }
+    .file-pill .err { color: var(--danger); }
+
+    /* ── Main Chat ─────────────────────────────────── */
+    .main {
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    .main-header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 16px;
+    }
+
+    .active-store-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 12px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+    }
+    .active-store-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+
+    .clear-btn {
+      margin-left: auto; background: none; border: 1px solid var(--border);
+      color: var(--muted); padding: 5px 10px; border-radius: 6px;
+      font-size: 11px; cursor: pointer; transition: all 0.15s;
+      font-family: var(--font-mono);
+    }
+    .clear-btn:hover { color: var(--text); border-color: var(--text); }
+
+    /* Messages */
+    .messages {
+      flex: 1; overflow-y: auto;
+      padding: 32px;
+      display: flex; flex-direction: column; gap: 28px;
+    }
+
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-track { background: transparent; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: var(--muted); text-align: center; gap: 12px;
+      padding: 40px;
+    }
+
+    .empty-icon {
+      font-size: 48px; opacity: 0.3;
+      animation: float 4s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .empty-title {
+      font-family: var(--font-serif);
+      font-size: 22px; color: var(--text);
+      opacity: 0.5;
+    }
+
+    .empty-sub { font-size: 13px; max-width: 300px; line-height: 1.6; }
+
+    .suggestions {
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px;
+    }
+
+    .suggestion-chip {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 6px 14px;
+      font-size: 12px; cursor: pointer; transition: all 0.15s;
+      color: var(--muted);
+    }
+    .suggestion-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Message bubbles */
+    .message { display: flex; gap: 14px; animation: msgIn 0.25s ease; }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    .message.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0; margin-top: 2px;
+    }
+    .avatar.user-av { background: var(--accent2); }
+    .avatar.bot-av { background: var(--surface2); border: 1px solid var(--border); }
+
+    .bubble {
+      max-width: 70%; padding: 14px 18px; border-radius: 12px;
+      line-height: 1.7; font-size: 14px;
+    }
+    .message.user .bubble {
+      background: var(--accent2);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .message.bot .bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble p + p { margin-top: 10px; }
+    .bubble code {
+      font-family: var(--font-mono); font-size: 12px;
+      background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px;
+    }
+
+    /* Typing indicator */
+    .typing { display: flex; align-items: center; gap: 5px; padding: 14px 18px; }
+    .typing span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); display: inline-block;
+      animation: bounce 1.2s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40% { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* Input bar */
+    .input-bar {
+      padding: 20px 32px 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .input-row {
+      display: flex; gap: 10px; align-items: flex-end;
+    }
+
+    .message-input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; color: var(--text);
+      font-family: var(--font-sans); font-size: 14px;
+      padding: 12px 16px; resize: none;
+      outline: none; max-height: 140px; line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    .message-input:focus { border-color: var(--accent); }
+    .message-input::placeholder { color: var(--muted); }
+
+    .send-btn {
+      background: var(--accent); border: none; color: #0d0d0f;
+      width: 44px; height: 44px; border-radius: 10px;
+      cursor: pointer; font-size: 18px; flex-shrink: 0;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center;
+    }
+    .send-btn:hover { filter: brightness(1.12); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .input-hint {
+      font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+      margin-top: 8px; text-align: right;
+    }
+
+    /* Modals */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100; backdrop-filter: blur(4px);
+      animation: fadeIn 0.15s;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 28px; width: 420px; max-width: 90vw;
+      animation: slideUp 0.2s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    .modal-title {
+      font-family: var(--font-serif); font-size: 20px; margin-bottom: 20px;
+    }
+
+    .modal-footer { display: flex; gap: 8px; margin-top: 20px; }
+    .modal-footer .btn { flex: 1; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 18px;
+      font-size: 13px; z-index: 200;
+      animation: toastIn 0.25s ease;
+    }
+    @keyframes toastIn { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+
+    /* Scrollbar */
+    .sidebar-section::-webkit-scrollbar { width: 3px; }
+    .sidebar-section::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Divider */
+    .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* No store placeholder */
+    .no-store {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+      color: var(--muted); text-align: center; padding: 40px;
+    }
+    .no-store-icon { font-size: 40px; opacity: 0.3; }
+    .no-store h2 { font-family: var(--font-serif); font-size: 20px; color: var(--text); opacity: 0.5; }
+    .no-store p { font-size: 13px; max-width: 260px; line-height: 1.6; }
+
+    /* Upload progress */
+    .progress-bar {
+      height: 3px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; background: var(--accent); border-radius: 2px;
+      transition: width 0.3s ease; width: 0%;
+    }
+
+    @media (max-width: 640px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Sidebar ─────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">Doc<span>Mind</span></div>
+      <div class="logo-sub">Document Intelligence</div>
+    </div>
+
+    <div class="sidebar-section">
+
+      <!-- Stores -->
+      <div>
+        <div class="section-label">Knowledge Bases</div>
+        <div class="stores-list" id="storesList">
+          <div style="color:var(--muted);font-size:12px;padding:4px 0">Loading…</div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:6px;">
+          <button class="btn btn-primary btn-sm" onclick="openNewStoreModal()" style="flex:1">+ New</button>
+          <button class="btn btn-ghost btn-sm" onclick="openUploadModal()" style="flex:1" id="uploadBtn" disabled>↑ Upload</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Active store info -->
+      <div id="storeInfo" style="display:none">
+        <div class="section-label">Active Store</div>
+        <div id="storeInfoContent" style="font-size:12px;color:var(--muted);line-height:1.6;"></div>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- ── Main ───────────────────────────── -->
+  <main class="main" id="mainArea">
+
+    <!-- No store selected -->
+    <div class="no-store" id="noStoreState">
+      <div class="no-store-icon">📚</div>
+      <h2>No Knowledge Base Selected</h2>
+      <p>Create or select a knowledge base from the sidebar to start asking questions.</p>
+      <button class="btn btn-primary" style="width:auto;padding:10px 24px;" onclick="openNewStoreModal()">Create Knowledge Base</button>
+    </div>
+
+    <!-- Chat UI (hidden until store selected) -->
+    <div id="chatUI" style="display:none; flex-direction:column; height:100%; overflow:hidden; flex:1;">
+      <div class="main-header">
+        <div class="active-store-badge">
+          <span class="dot"></span>
+          <span id="activeStoreName">—</span>
+        </div>
+        <button class="clear-btn" onclick="clearChat()">Clear chat</button>
+      </div>
+
+      <div class="messages" id="messages">
+        <div class="empty-state" id="emptyState">
+          <span class="empty-icon">✦</span>
+          <div class="empty-title">Ask anything</div>
+          <div class="empty-sub">Your documents are ready. Ask a question and I'll find the answer.</div>
+          <div class="suggestions" id="suggestions">
+            <div class="suggestion-chip" onclick="useSuggestion(this)">Summarize the main topics</div>
+            <div class="suggestion-chip" onclick="useSuggestion(this)">What are the key findings?</div>
+            <div class="suggestion-chip" onclick="useSuggestion(this)">List all mentioned dates</div>
+            <div class="suggestion-chip" onclick="useSuggestion(this)">Who are the key people?</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-bar">
+        <div class="input-row">
+          <textarea
+            class="message-input"
+            id="messageInput"
+            rows="1"
+            placeholder="Ask a question about your documents…"
+            onkeydown="handleKey(event)"
+            oninput="autoResize(this)"
+          ></textarea>
+          <button class="send-btn" id="sendBtn" onclick="sendMessage()">↑</button>
+        </div>
+        <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── New Store Modal ──────────────────── -->
+<div class="overlay" id="newStoreModal" style="display:none" onclick="closeModal('newStoreModal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">New Knowledge Base</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div class="section-label" style="margin-bottom:6px;">Name</div>
+        <input type="text" class="input-field" id="newStoreName" placeholder="e.g. Company Docs, Research Papers…" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('newStoreModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createStore()" id="createStoreBtn">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Upload Modal ─────────────────────── -->
+<div class="overlay" id="uploadModal" style="display:none" onclick="closeModal('uploadModal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Upload Documents</div>
+    <div
+      class="upload-zone" id="uploadZone"
+      onclick="document.getElementById('fileInput').click()"
+      ondragover="handleDragOver(event)"
+      ondragleave="handleDragLeave(event)"
+      ondrop="handleDrop(event)"
+    >
+      <span class="upload-icon">⬆</span>
+      <div>Drop files here or <strong style="color:var(--accent)">browse</strong></div>
+      <div style="margin-top:4px;font-size:11px;">PDF, TXT, MD, DOCX, PPTX, XLSX, JSON, CSV</div>
+    </div>
+    <input type="file" id="fileInput" multiple style="display:none" onchange="handleFileSelect(event)"
+      accept=".pdf,.txt,.md,.docx,.pptx,.xlsx,.html,.json,.csv,.py,.js,.ts" />
+
+    <div class="file-list" id="fileList"></div>
+    <div class="progress-bar" id="progressBar" style="display:none"><div class="progress-fill" id="progressFill"></div></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('uploadModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="uploadFiles()" id="uploadBtn2" disabled>Upload</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────────────────
+  const API = "";  // same origin
+  let activeStoreId = null;
+  let activeStoreName = "";
+  let sessionId = crypto.randomUUID();
+  let isLoading = false;
+  let pendingFiles = [];
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  loadStores();
+
+  async function loadStores() {
+    try {
+      const r = await fetch(`${API}/api/stores`);
+      const { stores } = await r.json();
+      renderStores(stores);
+    } catch (e) {
+      document.getElementById("storesList").innerHTML =
+        `<div style="color:var(--danger);font-size:12px;">⚠ Could not connect to server</div>`;
+    }
+  }
+
+  function renderStores(stores) {
+    const el = document.getElementById("storesList");
+    if (!stores.length) {
+      el.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:4px 0">No knowledge bases yet.</div>`;
+      return;
+    }
+    el.innerHTML = stores.map(s => `
+      <div class="store-item ${s.id === activeStoreId ? 'active' : ''}" onclick="selectStore('${s.id}','${escHtml(s.name)}',${s.fileCount})">
+        <div class="store-dot"></div>
+        <div class="store-info">
+          <div class="store-name">${escHtml(s.name)}</div>
+          <div class="store-meta">${s.fileCount} file${s.fileCount !== 1 ? 's' : ''}</div>
+        </div>
+        <button class="store-delete" onclick="event.stopPropagation();deleteStore('${s.id}')" title="Delete">✕</button>
+      </div>
+    `).join("");
+  }
+
+  function selectStore(id, name, fileCount) {
+    activeStoreId = id;
+    activeStoreName = name;
+    sessionId = crypto.randomUUID(); // new session per store switch
+
+    // Update sidebar
+    loadStores();
+    document.getElementById("uploadBtn").disabled = false;
+    document.getElementById("storeInfo").style.display = "block";
+    document.getElementById("storeInfoContent").textContent =
+      `${name} · ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+
+    // Show chat
+    document.getElementById("noStoreState").style.display = "none";
+    const chatUI = document.getElementById("chatUI");
+    chatUI.style.display = "flex";
+    document.getElementById("activeStoreName").textContent = name;
+
+    // Clear messages
+    clearChat(false);
+  }
+
+  // ── New Store ─────────────────────────────────────────────────────────────
+  function openNewStoreModal() {
+    document.getElementById("newStoreModal").style.display = "flex";
+    document.getElementById("newStoreName").focus();
+  }
+
+  async function createStore() {
+    const name = document.getElementById("newStoreName").value.trim();
+    if (!name) return;
+    const btn = document.getElementById("createStoreBtn");
+    btn.disabled = true; btn.textContent = "Creating…";
+    try {
+      const r = await fetch(`${API}/api/stores`, {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ name })
+      });
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      closeModal("newStoreModal");
+      document.getElementById("newStoreName").value = "";
+      showToast("Knowledge base created!", "success");
+      await loadStores();
+      selectStore(data.id, data.name, 0);
+    } catch (e) {
+      showToast(e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Create";
+    }
+  }
+
+  async function deleteStore(id) {
+    if (!confirm("Delete this knowledge base? This cannot be undone.")) return;
+    try {
+      await fetch(`${API}/api/stores/${id}`, { method: "DELETE" });
+      if (activeStoreId === id) {
+        activeStoreId = null;
+        document.getElementById("noStoreState").style.display = "flex";
+        document.getElementById("chatUI").style.display = "none";
+        document.getElementById("uploadBtn").disabled = true;
+        document.getElementById("storeInfo").style.display = "none";
+      }
+      showToast("Deleted.", "success");
+      loadStores();
+    } catch (e) { showToast(e.message, "error"); }
+  }
+
+  // ── Upload ────────────────────────────────────────────────────────────────
+  function openUploadModal() {
+    if (!activeStoreId) return;
+    document.getElementById("uploadModal").style.display = "flex";
+    pendingFiles = [];
+    document.getElementById("fileList").innerHTML = "";
+    document.getElementById("uploadBtn2").disabled = true;
+    document.getElementById("progressBar").style.display = "none";
+  }
+
+  function handleFileSelect(e) {
+    addPendingFiles([...e.target.files]);
+    e.target.value = "";
+  }
+  function handleDragOver(e) { e.preventDefault(); document.getElementById("uploadZone").classList.add("drag"); }
+  function handleDragLeave() { document.getElementById("uploadZone").classList.remove("drag"); }
+  function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById("uploadZone").classList.remove("drag");
+    addPendingFiles([...e.dataTransfer.files]);
+  }
+
+  function addPendingFiles(files) {
+    pendingFiles.push(...files);
+    const list = document.getElementById("fileList");
+    list.innerHTML = pendingFiles.map(f =>
+      `<div class="file-pill">📄 ${escHtml(f.name)} <span style="margin-left:auto;font-size:10px;">${(f.size/1024).toFixed(0)}kb</span></div>`
+    ).join("");
+    document.getElementById("uploadBtn2").disabled = pendingFiles.length === 0;
+  }
+
+  async function uploadFiles() {
+    if (!pendingFiles.length || !activeStoreId) return;
+    const btn = document.getElementById("uploadBtn2");
+    btn.disabled = true; btn.textContent = "Uploading…";
+    const bar = document.getElementById("progressBar");
+    const fill = document.getElementById("progressFill");
+    bar.style.display = "block"; fill.style.width = "20%";
+
+    const form = new FormData();
+    pendingFiles.forEach(f => form.append("files", f));
+
+    try {
+      fill.style.width = "60%";
+      const r = await fetch(`${API}/api/stores/${activeStoreId}/upload`, { method: "POST", body: form });
+      const data = await r.json();
+      fill.style.width = "100%";
+
+      const list = document.getElementById("fileList");
+      list.innerHTML = data.results.map(f =>
+        `<div class="file-pill">📄 ${escHtml(f.name)} <span class="${f.status === 'ok' ? 'ok' : 'err'}" style="margin-left:auto;">${f.status === 'ok' ? '✓' : '✗ '+f.status}</span></div>`
+      ).join("");
+
+      const ok = data.results.filter(r => r.status === 'ok').length;
+      showToast(`${ok} file${ok !== 1 ? 's' : ''} uploaded & indexed!`, "success");
+      setTimeout(() => closeModal("uploadModal"), 1500);
+      loadStores();
+    } catch (e) {
+      showToast(e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Upload";
+    }
+  }
+
+  // ── Chat ──────────────────────────────────────────────────────────────────
+  function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+
+  function autoResize(el) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  }
+
+  function useSuggestion(el) {
+    document.getElementById("messageInput").value = el.textContent.trim();
+    sendMessage();
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById("messageInput");
+    const text = input.value.trim();
+    if (!text || isLoading || !activeStoreId) return;
+
+    isLoading = true;
+    input.value = "";
+    input.style.height = "auto";
+    document.getElementById("sendBtn").disabled = true;
+
+    // Hide empty state
+    document.getElementById("emptyState").style.display = "none";
+
+    appendMessage("user", text);
+    const typingEl = appendTyping();
+
+    try {
+      const r = await fetch(`${API}/api/chat`, {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ message: text, vectorStoreId: activeStoreId, sessionId })
+      });
+      const data = await r.json();
+      typingEl.remove();
+      if (data.error) throw new Error(data.error);
+      appendMessage("bot", data.reply);
+    } catch (e) {
+      typingEl.remove();
+      appendMessage("bot", `⚠ Error: ${e.message}`);
+    } finally {
+      isLoading = false;
+      document.getElementById("sendBtn").disabled = false;
+      input.focus();
+    }
+  }
+
+  function appendMessage(role, text) {
+    const msgs = document.getElementById("messages");
+    const div = document.createElement("div");
+    div.className = `message ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = `avatar ${role === 'user' ? 'user-av' : 'bot-av'}`;
+    avatar.textContent = role === 'user' ? '↑' : '✦';
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    // Simple markdown-ish: newlines to <p>
+    bubble.innerHTML = text.split(/\n\n+/).map(p =>
+      `<p>${p.replace(/\n/g, '<br>').replace(/`([^`]+)`/g, '<code>$1</code>')}</p>`
+    ).join("");
+
+    div.appendChild(avatar);
+    div.appendChild(bubble);
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  function appendTyping() {
+    const msgs = document.getElementById("messages");
+    const div = document.createElement("div");
+    div.className = "message bot";
+    div.innerHTML = `
+      <div class="avatar bot-av">✦</div>
+      <div class="bubble">
+        <div class="typing"><span></span><span></span><span></span></div>
+      </div>`;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+  }
+
+  async function clearChat(notify = true) {
+    if (sessionId) await fetch(`${API}/api/chat/${sessionId}`, { method: "DELETE" }).catch(()=>{});
+    sessionId = crypto.randomUUID();
+    const msgs = document.getElementById("messages");
+    msgs.innerHTML = `
+      <div class="empty-state" id="emptyState">
+        <span class="empty-icon">✦</span>
+        <div class="empty-title">Ask anything</div>
+        <div class="empty-sub">Your documents are ready. Ask a question and I'll find the answer.</div>
+        <div class="suggestions" id="suggestions">
+          <div class="suggestion-chip" onclick="useSuggestion(this)">Summarize the main topics</div>
+          <div class="suggestion-chip" onclick="useSuggestion(this)">What are the key findings?</div>
+          <div class="suggestion-chip" onclick="useSuggestion(this)">List all mentioned dates</div>
+          <div class="suggestion-chip" onclick="useSuggestion(this)">Who are the key people?</div>
+        </div>
+      </div>`;
+    if (notify) showToast("Chat cleared.", "success");
+  }
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+  function closeModal(id) {
+    document.getElementById(id).style.display = "none";
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") { closeModal("newStoreModal"); closeModal("uploadModal"); }
+  });
+
+  document.getElementById("newStoreName").addEventListener("keydown", e => {
+    if (e.key === "Enter") createStore();
+  });
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg, type = "") {
+    const t = document.createElement("div");
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  // ── Utils ─────────────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+</script>
+</body>
+</html>
