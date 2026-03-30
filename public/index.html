@@ -533,14 +533,15 @@
   // ── Boot ──────────────────────────────────────────────────────────────────
   setTimeout(loadStores, 500);
 
-  async function loadStores() {
+ async function loadStores() {
     try {
       const r = await apiFetch(`${API}/api/stores`);
-      const { stores } = await r.json();
-      renderStores(stores);
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      renderStores(data.stores);
     } catch (e) {
       document.getElementById("storesList").innerHTML =
-        `<div style="color:var(--danger);font-size:12px;">⚠ Could not connect to server</div>`;
+        `<div style="color:var(--danger);font-size:12px;">⚠ ${e.message}</div>`;
     }
   }
 
