@@ -180,10 +180,15 @@ const createMcpServer = () => {
 const transports: Record<string, SSEServerTransport> = {};
 
 app.get("/mcp/sse", async (req, res) => {
+  // Set SSE headers immediately before anything else
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
   const transport = new SSEServerTransport("/mcp/messages", res);
   transports[transport.sessionId] = transport;
   res.on("close", () => delete transports[transport.sessionId]);
-  // Create a fresh McpServer instance for each connection
   const server = createMcpServer();
   await server.connect(transport);
 });
