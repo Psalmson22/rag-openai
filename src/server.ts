@@ -8,6 +8,9 @@ import OpenAI from "openai";
 import { runWorkflow } from "./agent";
 import { uploadFileToStore, deleteVectorStore } from "./vectorStore";
 import { AgentInputItem } from "@openai/agents";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { z } from "zod";
 
 const getClient = () => {
   const key = process.env.OPENAI_API_KEY;
@@ -31,7 +34,6 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 app.use("/api", requireApiKey);
-// Note: /mcp is intentionally open so ChatGPT can connect without auth
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
@@ -96,69 +98,67 @@ app.delete("/api/chat/:sessionId", (req, res) => {
   res.json({ success: true });
 });
 
-// ── MCP Endpoint (for ChatGPT) ────────────────────────────────────────────────
-app.get("/mcp/sse", (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  const manifest = {
-    type: "manifest",
-    manifest: {
-      schema_version: "v1",
-      name: "DocMind RAG",
-      description: "Ask questions and get answers from your uploaded documents",
-      tools: [
-        {
-          name: "listKnowledgeBases",
-          description: "List all available knowledge bases with their IDs and file counts",
-          input_schema: { type: "object", properties: {}, required: [] }
-        },
-        {
-          name: "askQuestion",
-          description: "Ask a question and get an answer grounded in the documents of a knowledge base",
-          input_schema: {
-            type: "object",
-            properties: {
-              message: { type: "string", description: "The user question" },
-              vectorStoreId: { type: "string", description: "Knowledge base ID from listKnowledgeBases" },
-              sessionId: { type: "string", description: "Unique session ID, reuse across conversation turns" }
-            },
-            required: ["message", "vectorStoreId", "sessionId"]
-          }
-        }
-      ]
-    }
-  };
-
-  res.write(`data: ${JSON.stringify(manifest)}\n\n`);
-  const keepAlive = setInterval(() => res.write(": ping\n\n"), 20000);
-  req.on("close", () => clearInterval(keepAlive));
+// ── MCP Server (for ChatGPT) ──────────────────────────────────────────────────
+const mcpServer = new McpServer({
+  name: "DocMind RAG",
+  version: "1.0.0"
 });
 
-app.post("/mcp/call", async (req, res) => {
-  const { tool, input } = req.body;
-  try {
-    if (tool === "listKnowledgeBases") {
-      const stores = await getClient().vectorStores.list();
-      return res.json({
-        result: stores.data.map((s: any) => ({
-          id: s.id,
-          name: s.name || "Unnamed",
-          fileCount: s.file_counts.completed
-        }))
-      });
-    }
-    if (tool === "askQuestion") {
-      const { message, vectorStoreId, sessionId } = input;
-      if (!sessions[sessionId]) sessions[sessionId] = { vectorStoreId, history: [] };
-      const session = sessions[sessionId];
-      const outcome = await runWorkflow({ input_as_text: message, vectorStoreId, conversationHistory: session.history });
-      session.history = outcome.updatedHistory;
-      return res.json({ result: outcome.output_text });
-    }
-    res.status(400).json({ error: `Unknown tool: ${tool}` });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+mcpServer.tool(
+  "listKnowledgeBases",
+  "List all available knowledge bases with their IDs and file counts",
+  {},
+  async () => {
+    const stores = await getClient().vectorStores.list();
+    const result = stores.data.map((s: any) => ({
+      id: s.id,
+      name: s.name || "Unnamed",
+      fileCount: s.file_counts.completed
+    }));
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+    };
+  }
+);
+
+mcpServer.tool(
+  "askQuestion",
+  "Ask a question and get an answer grounded in the documents of a knowledge base",
+  {
+    message: z.string().describe("The user question"),
+    vectorStoreId: z.string().describe("Knowledge base ID from listKnowledgeBases"),
+    sessionId: z.string().describe("Unique session ID, reuse across conversation turns")
+  },
+  async ({ message, vectorStoreId, sessionId }) => {
+    if (!sessions[sessionId]) sessions[sessionId] = { vectorStoreId, history: [] };
+    const session = sessions[sessionId];
+    const outcome = await runWorkflow({
+      input_as_text: message,
+      vectorStoreId,
+      conversationHistory: session.history
+    });
+    session.history = outcome.updatedHistory;
+    return {
+      content: [{ type: "text", text: outcome.output_text }]
+    };
+  }
+);
+
+// SSE transport map for multiple connections
+const transports: Record<string, SSEServerTransport> = {};
+
+app.get("/mcp/sse", async (req, res) => {
+  const transport = new SSEServerTransport("/mcp/messages", res);
+  transports[transport.sessionId] = transport;
+  res.on("close", () => delete transports[transport.sessionId]);
+  await mcpServer.connect(transport);
+});
+
+app.post("/mcp/messages", async (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  const transport = transports[sessionId];
+  if (!transport) return res.status(400).json({ error: "No active session" });
+  await transport.handlePostMessage(req, res);
 });
 
 const PORT = process.env.PORT || 3000;
