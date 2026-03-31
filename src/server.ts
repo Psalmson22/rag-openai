@@ -178,24 +178,34 @@ const createMcpServer = () => {
 const transports: Record<string, SSEServerTransport> = {};
 
 app.get("/mcp/sse", async (req, res) => {
-  // Set SSE headers immediately before anything else
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders();
+  try {
+    // Set SSE headers immediately before anything else
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
 
-  const transport = new SSEServerTransport("/mcp/messages", res);
-  transports[transport.sessionId] = transport;
-  res.on("close", () => delete transports[transport.sessionId]);
-  const server = createMcpServer();
-  await server.connect(transport);
+    const transport = new SSEServerTransport("/mcp/messages", res);
+    transports[transport.sessionId] = transport;
+    res.on("close", () => delete transports[transport.sessionId]);
+    const server = createMcpServer();
+    await server.connect(transport);
+  } catch (error) {
+    console.error("Error in MCP SSE:", error);
+    res.status(500).end();
+  }
 });
 
 app.post("/mcp/messages", async (req, res) => {
-  const sessionId = req.query.sessionId as string;
-  const transport = transports[sessionId];
-  if (!transport) return res.status(400).json({ error: "No active session" });
-  await transport.handlePostMessage(req, res);
+  try {
+    const sessionId = req.query.sessionId as string;
+    const transport = transports[sessionId];
+    if (!transport) return res.status(400).json({ error: "No active session" });
+    await transport.handlePostMessage(req, res);
+  } catch (error) {
+    console.error("Error in MCP messages:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
