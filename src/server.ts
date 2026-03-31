@@ -25,7 +25,50 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
-// ── API Key Auth (protects /api routes only) ──────────────────────────────────
+// ── OAuth for ChatGPT ─────────────────────────────────────────────────────────
+const VALID_TOKEN = process.env.APP_SECRET_KEY || "dev-token";
+const CLIENT_ID = process.env.OAUTH_CLIENT_ID || "docmind-client";
+const CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET || VALID_TOKEN;
+
+app.get("/oauth/authorize", (req, res) => {
+  const { redirect_uri, state } = req.query;
+  const code = Buffer.from(VALID_TOKEN).toString("base64");
+  res.redirect(`${redirect_uri}?code=${code}&state=${state}`);
+});
+
+app.post("/oauth/token", (req, res) => {
+  const { code, client_id, client_secret, grant_type } = req.body;
+  if (client_id !== CLIENT_ID || client_secret !== CLIENT_SECRET) {
+    return res.status(401).json({ error: "invalid_client" });
+  }
+  if (grant_type === "client_credentials") {
+    return res.json({ access_token: VALID_TOKEN, token_type: "bearer", expires_in: 86400 });
+  }
+  const decoded = Buffer.from(code as string, "base64").toString();
+  if (decoded !== VALID_TOKEN) return res.status(400).json({ error: "invalid_grant" });
+  res.json({ access_token: VALID_TOKEN, token_type: "bearer", expires_in: 86400 });
+});
+
+app.get("/.well-known/oauth-authorization-server", (req, res) => {
+  const base = `${req.protocol}://${req.get("host")}`;
+  res.json({
+    issuer: base,
+    authorization_endpoint: `${base}/oauth/authorize`,
+    token_endpoint: `${base}/oauth/token`,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code", "client_credentials"],
+    token_endpoint_auth_methods_supported: ["client_secret_post"]
+  });
+});
+
+// ── Auth middleware ───────────────────────────────────────────────────────────
+const requireBearer = (req: Request, res: Response, next: NextFunction) => {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith("Bearer ")) return res.status(401).json({ error: "Missing bearer token" });
+  if (auth.slice(7) !== VALID_TOKEN) return res.status(401).json({ error: "Invalid token" });
+  next();
+};
+
 const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   const appSecret = process.env.APP_SECRET_KEY;
   if (!appSecret) return next();
@@ -33,7 +76,9 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   if (provided !== appSecret) return res.status(401).json({ error: "Unauthorized" });
   next();
 };
+
 app.use("/api", requireApiKey);
+app.use("/mcp", requireBearer);
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
@@ -72,9 +117,7 @@ app.post("/api/stores/:id/upload", upload.array("files"), async (req, res) => {
       results.push({ name: file.originalname, status: "ok" });
     } catch (e: any) {
       results.push({ name: file.originalname, status: `error: ${e.message}` });
-    } finally {
-      fs.unlinkSync(file.path);
-    }
+    } finally { fs.unlinkSync(file.path); }
   }
   res.json({ results });
 });
@@ -98,60 +141,52 @@ app.delete("/api/chat/:sessionId", (req, res) => {
   res.json({ success: true });
 });
 
-// ── MCP Server (for ChatGPT) ──────────────────────────────────────────────────
-const mcpServer = new McpServer({
-  name: "DocMind RAG",
-  version: "1.0.0"
-});
+// ── MCP (ChatGPT) — new McpServer instance per connection ────────────────────
+const createMcpServer = () => {
+  const server = new McpServer({ name: "DocMind RAG", version: "1.0.0" });
 
-mcpServer.tool(
-  "listKnowledgeBases",
-  "List all available knowledge bases with their IDs and file counts",
-  {},
-  async () => {
-    const stores = await getClient().vectorStores.list();
-    const result = stores.data.map((s: any) => ({
-      id: s.id,
-      name: s.name || "Unnamed",
-      fileCount: s.file_counts.completed
-    }));
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
-    };
-  }
-);
+  server.tool(
+    "listKnowledgeBases",
+    "List all available knowledge bases with their IDs and file counts",
+    {},
+    async () => {
+      const stores = await getClient().vectorStores.list();
+      const result = stores.data.map((s: any) => ({
+        id: s.id, name: s.name || "Unnamed", fileCount: s.file_counts.completed
+      }));
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    }
+  );
 
-mcpServer.tool(
-  "askQuestion",
-  "Ask a question and get an answer grounded in the documents of a knowledge base",
-  {
-    message: z.string().describe("The user question"),
-    vectorStoreId: z.string().describe("Knowledge base ID from listKnowledgeBases"),
-    sessionId: z.string().describe("Unique session ID, reuse across conversation turns")
-  },
-  async ({ message, vectorStoreId, sessionId }) => {
-    if (!sessions[sessionId]) sessions[sessionId] = { vectorStoreId, history: [] };
-    const session = sessions[sessionId];
-    const outcome = await runWorkflow({
-      input_as_text: message,
-      vectorStoreId,
-      conversationHistory: session.history
-    });
-    session.history = outcome.updatedHistory;
-    return {
-      content: [{ type: "text", text: outcome.output_text }]
-    };
-  }
-);
+  server.tool(
+    "askQuestion",
+    "Ask a question and get an answer grounded in the documents of a knowledge base",
+    {
+      message: z.string().describe("The user question"),
+      vectorStoreId: z.string().describe("Knowledge base ID from listKnowledgeBases"),
+      sessionId: z.string().describe("Unique session ID, reuse across conversation turns")
+    },
+    async ({ message, vectorStoreId, sessionId }) => {
+      if (!sessions[sessionId]) sessions[sessionId] = { vectorStoreId, history: [] };
+      const session = sessions[sessionId];
+      const outcome = await runWorkflow({ input_as_text: message, vectorStoreId, conversationHistory: session.history });
+      session.history = outcome.updatedHistory;
+      return { content: [{ type: "text", text: outcome.output_text }] };
+    }
+  );
 
-// SSE transport map for multiple connections
+  return server;
+};
+
 const transports: Record<string, SSEServerTransport> = {};
 
 app.get("/mcp/sse", async (req, res) => {
   const transport = new SSEServerTransport("/mcp/messages", res);
   transports[transport.sessionId] = transport;
   res.on("close", () => delete transports[transport.sessionId]);
-  await mcpServer.connect(transport);
+  // Create a fresh McpServer instance for each connection
+  const server = createMcpServer();
+  await server.connect(transport);
 });
 
 app.post("/mcp/messages", async (req, res) => {
