@@ -50,7 +50,7 @@ app.post("/oauth/token", (req, res) => {
 });
 
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
-  const base = `${req.protocol}://${req.get("host")}`;
+  const base = `https://deep-learning-tutor.onrender.com`;
   res.json({
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
@@ -77,7 +77,7 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-app.use("/api", requireApiKey);
+app.use("/api", requireBearer);
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};

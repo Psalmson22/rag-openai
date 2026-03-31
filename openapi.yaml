@@ -5,11 +5,11 @@ info:
   version: 1.0.0
 
 servers:
-  - url: https://YOUR-APP-URL.onrender.com   # ← replace with your actual deployed URL
+  - url: https://deep-learning-tutor.onrender.com  # ← replace with your actual deployed URL
     description: Production server
 
 security:
-  - ApiKeyAuth: []
+  - oauth2: []
 
 paths:
   /api/chat:
@@ -89,3 +89,10 @@ components:
       type: apiKey
       in: header
       name: x-api-key
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://deep-learning-tutor.onrender.com/oauth/authorize
+          tokenUrl: https://deep-learning-tutor.onrender.com/oauth/token
+          scopes: {}
