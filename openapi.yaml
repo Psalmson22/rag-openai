@@ -4,13 +4,6 @@ info:
   description: Document Q&A system — ask questions and get answers from your uploaded documents.
   version: 1.0.0
 
-servers:
-  - url: https://deep-learning-tutor.onrender.com  # ← replace with your actual deployed URL
-    description: Production server
-
-security:
-  - oauth2: []
-
 paths:
   /api/chat:
     post:

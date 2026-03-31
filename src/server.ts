@@ -77,8 +77,6 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-app.use("/api", requireBearer);
-
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
 
