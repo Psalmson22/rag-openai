@@ -78,7 +78,6 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use("/api", requireApiKey);
-app.use("/mcp", requireBearer);
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
