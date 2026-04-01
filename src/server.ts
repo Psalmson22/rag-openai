@@ -50,7 +50,7 @@ app.post("/oauth/token", (req, res) => {
 });
 
 app.get("/.well-known/oauth-authorization-server", (req, res) => {
-  const base = `https://deep-learning-tutor.onrender.com`;
+  const base = `${req.protocol}://${req.get("host")}`;
   res.json({
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
@@ -76,6 +76,9 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   if (provided !== appSecret) return res.status(401).json({ error: "Unauthorized" });
   next();
 };
+
+app.use("/api", requireApiKey);
+app.use("/mcp", requireBearer);
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
@@ -178,34 +181,19 @@ const createMcpServer = () => {
 const transports: Record<string, SSEServerTransport> = {};
 
 app.get("/mcp/sse", async (req, res) => {
-  try {
-    // Set SSE headers immediately before anything else
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders();
-
-    const transport = new SSEServerTransport("/mcp/messages", res);
-    transports[transport.sessionId] = transport;
-    res.on("close", () => delete transports[transport.sessionId]);
-    const server = createMcpServer();
-    await server.connect(transport);
-  } catch (error) {
-    console.error("Error in MCP SSE:", error);
-    res.status(500).end();
-  }
+  const transport = new SSEServerTransport("/mcp/messages", res);
+  transports[transport.sessionId] = transport;
+  res.on("close", () => delete transports[transport.sessionId]);
+  // Create a fresh McpServer instance for each connection
+  const server = createMcpServer();
+  await server.connect(transport);
 });
 
 app.post("/mcp/messages", async (req, res) => {
-  try {
-    const sessionId = req.query.sessionId as string;
-    const transport = transports[sessionId];
-    if (!transport) return res.status(400).json({ error: "No active session" });
-    await transport.handlePostMessage(req, res);
-  } catch (error) {
-    console.error("Error in MCP messages:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  const sessionId = req.query.sessionId as string;
+  const transport = transports[sessionId];
+  if (!transport) return res.status(400).json({ error: "No active session" });
+  await transport.handlePostMessage(req, res);
 });
 
 const PORT = process.env.PORT || 3000;
