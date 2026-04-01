@@ -181,6 +181,10 @@ const createMcpServer = () => {
 const transports: Record<string, SSEServerTransport> = {};
 
 app.get("/mcp/sse", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
   // Set SSE headers immediately before anything else
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
