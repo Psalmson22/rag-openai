@@ -78,7 +78,7 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use("/api", requireApiKey);
-app.use("/mcp", requireBearer);
+
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
@@ -185,11 +185,6 @@ app.get("/mcp/sse", async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
-  // Set SSE headers immediately before anything else
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders();
 
   const transport = new SSEServerTransport("/mcp/messages", res);
   transports[transport.sessionId] = transport;
@@ -207,3 +202,4 @@ app.post("/mcp/messages", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+
