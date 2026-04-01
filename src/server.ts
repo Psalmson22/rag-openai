@@ -8,9 +8,6 @@ import OpenAI from "openai";
 import { runWorkflow } from "./agent";
 import { uploadFileToStore, deleteVectorStore } from "./vectorStore";
 import { AgentInputItem } from "@openai/agents";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { z } from "zod";
 
 const getClient = () => {
   const key = process.env.OPENAI_API_KEY;
@@ -62,13 +59,6 @@ app.get("/.well-known/oauth-authorization-server", (req, res) => {
 });
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
-const requireBearer = (req: Request, res: Response, next: NextFunction) => {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith("Bearer ")) return res.status(401).json({ error: "Missing bearer token" });
-  if (auth.slice(7) !== VALID_TOKEN) return res.status(401).json({ error: "Invalid token" });
-  next();
-};
-
 const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
   const appSecret = process.env.APP_SECRET_KEY;
   if (!appSecret) return next();
@@ -78,7 +68,6 @@ const requireApiKey = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use("/api", requireApiKey);
-
 
 // In-memory session store
 const sessions: Record<string, { vectorStoreId: string; history: AgentInputItem[] }> = {};
@@ -141,65 +130,139 @@ app.delete("/api/chat/:sessionId", (req, res) => {
   res.json({ success: true });
 });
 
-// ── MCP (ChatGPT) — new McpServer instance per connection ────────────────────
-const createMcpServer = () => {
-  const server = new McpServer({ name: "DocMind RAG", version: "1.0.0" });
+// ── MCP over SSE (manual implementation for ChatGPT compatibility) ────────────
+// Tracks SSE response objects by session ID
+const sseClients: Record<string, Response> = {};
 
-  server.tool(
-    "listKnowledgeBases",
-    "List all available knowledge bases with their IDs and file counts",
-    {},
-    async () => {
-      const stores = await getClient().vectorStores.list();
-      const result = stores.data.map((s: any) => ({
-        id: s.id, name: s.name || "Unnamed", fileCount: s.file_counts.completed
-      }));
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    }
-  );
-
-  server.tool(
-    "askQuestion",
-    "Ask a question and get an answer grounded in the documents of a knowledge base",
-    {
-      message: z.string().describe("The user question"),
-      vectorStoreId: z.string().describe("Knowledge base ID from listKnowledgeBases"),
-      sessionId: z.string().describe("Unique session ID, reuse across conversation turns")
-    },
-    async ({ message, vectorStoreId, sessionId }) => {
-      if (!sessions[sessionId]) sessions[sessionId] = { vectorStoreId, history: [] };
-      const session = sessions[sessionId];
-      const outcome = await runWorkflow({ input_as_text: message, vectorStoreId, conversationHistory: session.history });
-      session.history = outcome.updatedHistory;
-      return { content: [{ type: "text", text: outcome.output_text }] };
-    }
-  );
-
-  return server;
+// Send a JSON-RPC message to a client
+const sendToClient = (sessionId: string, message: object) => {
+  const client = sseClients[sessionId];
+  if (client) client.write(`data: ${JSON.stringify(message)}\n\n`);
 };
 
-const transports: Record<string, SSEServerTransport> = {};
-
-app.get("/mcp/sse", async (req, res) => {
+// SSE connection endpoint
+app.get("/mcp/sse", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("Access-Control-Allow-Origin", "*");
   res.flushHeaders();
 
-  const transport = new SSEServerTransport("/mcp/messages", res);
-  transports[transport.sessionId] = transport;
-  res.on("close", () => delete transports[transport.sessionId]);
-  const server = createMcpServer();
-  await server.connect(transport);
+  const sessionId = Math.random().toString(36).slice(2);
+  sseClients[sessionId] = res;
+
+  // Send the endpoint info event immediately
+  res.write(`event: endpoint\ndata: /mcp/messages?sessionId=${sessionId}\n\n`);
+
+  // Keep alive
+  const keepAlive = setInterval(() => res.write(`: ping\n\n`), 15000);
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    delete sseClients[sessionId];
+  });
 });
 
+// Message handler endpoint
 app.post("/mcp/messages", async (req, res) => {
   const sessionId = req.query.sessionId as string;
-  const transport = transports[sessionId];
-  if (!transport) return res.status(400).json({ error: "No active session" });
-  await transport.handlePostMessage(req, res);
+  if (!sseClients[sessionId]) {
+    return res.status(400).json({ error: "No active session" });
+  }
+
+  const message = req.body;
+  const { id, method, params } = message;
+
+  try {
+    // Handle MCP protocol methods
+    if (method === "initialize") {
+      sendToClient(sessionId, {
+        jsonrpc: "2.0", id,
+        result: {
+          protocolVersion: "2024-11-05",
+          capabilities: { tools: {} },
+          serverInfo: { name: "DocMind RAG", version: "1.0.0" }
+        }
+      });
+
+    } else if (method === "notifications/initialized") {
+      // No response needed for notifications
+      res.json({ ok: true });
+      return;
+
+    } else if (method === "tools/list") {
+      sendToClient(sessionId, {
+        jsonrpc: "2.0", id,
+        result: {
+          tools: [
+            {
+              name: "listKnowledgeBases",
+              description: "List all available knowledge bases with their IDs and file counts",
+              inputSchema: { type: "object", properties: {}, required: [] }
+            },
+            {
+              name: "askQuestion",
+              description: "Ask a question and get an answer grounded in uploaded documents",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  message: { type: "string", description: "The user question" },
+                  vectorStoreId: { type: "string", description: "Knowledge base ID from listKnowledgeBases" },
+                  sessionId: { type: "string", description: "Unique session ID, reuse across turns" }
+                },
+                required: ["message", "vectorStoreId", "sessionId"]
+              }
+            }
+          ]
+        }
+      });
+
+    } else if (method === "tools/call") {
+      const { name, arguments: args } = params;
+
+      if (name === "listKnowledgeBases") {
+        const stores = await getClient().vectorStores.list();
+        const result = stores.data.map((s: any) => ({
+          id: s.id, name: s.name || "Unnamed", fileCount: s.file_counts.completed
+        }));
+        sendToClient(sessionId, {
+          jsonrpc: "2.0", id,
+          result: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] }
+        });
+
+      } else if (name === "askQuestion") {
+        const { message: msg, vectorStoreId, sessionId: sid } = args;
+        if (!sessions[sid]) sessions[sid] = { vectorStoreId, history: [] };
+        const session = sessions[sid];
+        const outcome = await runWorkflow({ input_as_text: msg, vectorStoreId, conversationHistory: session.history });
+        session.history = outcome.updatedHistory;
+        sendToClient(sessionId, {
+          jsonrpc: "2.0", id,
+          result: { content: [{ type: "text", text: outcome.output_text }] }
+        });
+
+      } else {
+        sendToClient(sessionId, {
+          jsonrpc: "2.0", id,
+          error: { code: -32601, message: `Unknown tool: ${name}` }
+        });
+      }
+
+    } else {
+      sendToClient(sessionId, {
+        jsonrpc: "2.0", id,
+        error: { code: -32601, message: `Method not found: ${method}` }
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    sendToClient(sessionId, {
+      jsonrpc: "2.0", id,
+      error: { code: -32603, message: e.message }
+    });
+    res.json({ ok: true });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
-
